@@ -1,0 +1,35 @@
+# Install dependencies only when needed
+FROM node:21-alpine3.19 AS deps
+
+WORKDIR /usr/src/app
+
+COPY package.json package-lock.json ./
+
+RUN npm install
+
+# Build the app with cache dependencies
+FROM node:21-alpine3.19 AS builder
+
+WORKDIR /usr/src/app
+
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+COPY . .
+
+RUN npm run build
+RUN npm ci -f --omit=dev && npm cache clean --force
+
+# Production image, copy all the files and run nest
+FROM node:21-alpine3.19 AS runner
+
+WORKDIR /usr/src/app
+
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/dist ./dist
+
+ENV NODE_ENV=production
+
+USER node
+
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]
